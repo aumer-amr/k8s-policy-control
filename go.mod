@@ -1,4 +1,4 @@
-module github.com/bjw-s/k8s-ycl
+module github.com/aumer-amr/k8s-policy-control
 
 go 1.20
 
