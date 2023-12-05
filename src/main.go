@@ -1,5 +1,5 @@
 /*
-Copyright 2023 bjw-s.
+Copyright 2023 bjw-s, aumer-amr
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 
 	corev1 "k8s.io/api/core/v1"
+	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -93,11 +94,21 @@ func main() {
 func setupWebhook(mgr manager.Manager) {
 	// setup webhooks
 	setupLog.Info("registering webhook to the webhook server")
-	if err := builder.WebhookManagedBy(mgr).
+	var err error
+
+	if err = builder.WebhookManagedBy(mgr).
 		For(&corev1.Pod{}).
 		WithDefaulter(&podMutator{}).
 		Complete(); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "Pod")
+		os.Exit(1)
+	}
+
+	if err = builder.WebhookManagedBy(mgr).
+		For(&networkv1.Ingress{}).
+		WithDefaulter(&ingressMutator{}).
+		Complete(); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "ingress")
 		os.Exit(1)
 	}
 }
