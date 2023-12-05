@@ -20,8 +20,8 @@ jobs:
         id: get-app-token
         uses: getsentry/action-github-app-token@v2
         with:
-          app_id: ${{ secrets.BJWS_APP_ID }}
-          private_key: ${{ secrets.BJWS_APP_PRIVATE_KEY }}
+          app_id: ${{ secrets.BOT_APP_ID }}
+          private_key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
 
       - name: Checkout main branch
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
@@ -32,5 +32,3 @@ jobs:
         uses: gautamkrishnar/keepalive-workflow@v1
         with:
           gh_token: ${{ steps.get-app-token.outputs.token }}
-          committer_username: "bjw-s-bot[bot]"
-          committer_email: "bjw-s-bot <87358111+bjw-s-bot[bot]@users.noreply.github.com>"
