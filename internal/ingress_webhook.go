@@ -18,22 +18,13 @@ package main
 
 import (
 	"context"
-	"fmt"
 
-	networkv1 "k8s.io/api/networking/v1"
+	"github.com/aumer-amr/k8s-policy-control/internal/policy"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
 type ingressMutator struct{}
 
 func (m *ingressMutator) Default(ctx context.Context, obj runtime.Object) error {
-
-	ingress, ok := obj.(*networkv1.Ingress)
-	if !ok {
-		return fmt.Errorf("expected a Ingress but got a %T", obj)
-	}
-
-	ingress.ObjectMeta.Namespace = "default"
-
-	return nil
+	return policy.ApplyPoliciesByType(policy.PolicyTypeIngress, obj)
 }

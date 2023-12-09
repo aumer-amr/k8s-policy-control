@@ -10,7 +10,7 @@ import (
 
 var (
 	KeepLimitsAnnotation = "policy-control.aumer.io/keep-limits"
-	log                  = ctrl.Log.WithName("pod_cpu_limits")
+	podCpuLog            = ctrl.Log.WithName("pod_cpu_limits")
 )
 
 type PodCPULimits struct{}
@@ -32,7 +32,7 @@ func (p PodCPULimits) Validate(obj runtime.Object) (error, bool) {
 	if pod, ok := result.(*corev1.Pod); ok {
 		if val, ok := pod.Annotations[KeepLimitsAnnotation]; ok {
 			if val == "true" {
-				log.Info("Skipping Pod because annotation is explicitly true", "pod", getPodName(pod))
+				podCpuLog.Info("Skipping Pod because annotation is explicitly true", "pod", getPodName(pod))
 				return nil, false
 			}
 		}
@@ -67,7 +67,7 @@ func removeContainerLimits(container *corev1.Container, limitType corev1.Resourc
 	_, cpuLimitExists := limits[limitType]
 	if cpuLimitExists {
 		delete(limits, limitType)
-		log.Info("Removed resource limit",
+		podCpuLog.Info("Removed resource limit",
 			"namespace", pod.Namespace,
 			"pod", getPodName(pod),
 			"container", container.Name,
