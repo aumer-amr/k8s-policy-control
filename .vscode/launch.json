@@ -9,7 +9,7 @@
       "type": "go",
       "request": "launch",
       "mode": "auto",
-      "program": "${workspaceFolder}/src",
+      "program": "${workspaceFolder}/internal",
       "args": [
         "--tls-cert-dir",
         "${workspaceFolder}/certs",
@@ -20,7 +20,7 @@
       "type": "go",
       "request": "launch",
       "mode": "test",
-      "program": "${workspaceFolder}/src",
+      "program": "${workspaceFolder}/internal",
       "env": {},
       "args": [],
     }
