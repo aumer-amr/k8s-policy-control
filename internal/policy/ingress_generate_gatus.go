@@ -62,7 +62,7 @@ func (i IngressGenerateGatus) Validate(obj runtime.Object) (error, bool) {
 	return nil, false
 }
 
-func (i IngressGenerateGatus) Run(obj runtime.Object) error {
+func (i IngressGenerateGatus) Apply(obj runtime.Object) error {
 	err, result := ValidateByType(PolicyTypeIngress, obj)
 	if err != nil {
 		return err
@@ -124,7 +124,7 @@ endpoints:
 
 	return configMapData
 
-	//client.GetClient().Create(context.Background(), configMap)
+	//client.Client().Create(context.Background(), configMap)
 }
 
 func mutateGatusDns(annotationValue bool) string {

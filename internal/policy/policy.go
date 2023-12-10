@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -22,7 +23,7 @@ var policyRegistry []PolicyInterface
 type PolicyInterface interface {
 	Name() string
 	Validate(obj runtime.Object) (error, bool)
-	Run(obj runtime.Object) error
+	Apply(obj runtime.Object) error
 	Type() int
 }
 
@@ -30,11 +31,11 @@ func RegisterPolicy(impl PolicyInterface) {
 	policyRegistry = append(policyRegistry, impl)
 }
 
-func GetAllPolicies() []PolicyInterface {
+func AllPolicies() []PolicyInterface {
 	return policyRegistry
 }
 
-func GetPoliciesByType(policyType int) []PolicyInterface {
+func PoliciesByType(policyType int) []PolicyInterface {
 	var policies []PolicyInterface
 	for _, p := range policyRegistry {
 		if p.Type() == policyType {
@@ -45,7 +46,7 @@ func GetPoliciesByType(policyType int) []PolicyInterface {
 }
 
 func ApplyPoliciesByType(policyType int, obj runtime.Object) error {
-	policies := GetPoliciesByType(policyType)
+	policies := PoliciesByType(policyType)
 	for _, p := range policies {
 		policyLog.Info("applying policy", "policy", p.Name())
 		err, result := p.Validate(obj)
@@ -56,7 +57,7 @@ func ApplyPoliciesByType(policyType int, obj runtime.Object) error {
 			return nil
 		}
 
-		err = p.Run(obj)
+		err = p.Apply(obj)
 		if err != nil {
 			policyLog.Error(err, "error running policy", p.Name())
 			return err
@@ -73,13 +74,20 @@ func ValidateByType(policyType int, obj runtime.Object) (error, interface{}) {
 			return fmt.Errorf("expected a Pod but got a %T", obj), nil
 		}
 		return nil, pod
+	} else if policyType == PolicyTypeIngress {
+		ingress, ok := obj.(*networkv1.Ingress)
+		if !ok {
+			policyLog.Error(nil, "expected an Ingress but got a %T", obj)
+			return fmt.Errorf("expected an Ingress but got a %T", obj), nil
+		}
+		return nil, ingress
 	}
 
 	return nil, nil
 }
 
 func RegisterPolicies() {
-	policies := GetAllPolicies()
+	policies := AllPolicies()
 	for _, p := range policies {
 		policyLog.Info("registering policy", "policy", p.Name())
 	}

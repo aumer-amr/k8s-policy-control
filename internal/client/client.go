@@ -19,6 +19,6 @@ func InitClient(config *rest.Config) error {
 	return nil
 }
 
-func GetClient() client.Client {
+func Client() client.Client {
 	return c
 }
