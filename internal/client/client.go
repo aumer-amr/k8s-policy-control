@@ -1,24 +1,31 @@
 package client
 
 import (
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	client "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var (
-	c client.Client
-)
+type ListOptions struct {
+	ApiVersion string
+	Kind       string
+	Name       string
+	Namespace  string
+	Selector   labels.Selector
+}
 
-func InitClient(config *rest.Config) error {
+type KubeClient struct {
+	Client client.Client
+}
+
+func New(config *rest.Config) error {
+	k := &KubeClient{}
 	cl, err := client.New(config, client.Options{})
 	if err != nil {
 		return err
 	}
 
-	c = cl
-	return nil
-}
+	k.Client = cl
 
-func Client() client.Client {
-	return c
+	return nil
 }

@@ -62,14 +62,18 @@ func (i IngressGenerateGatus) Validate(obj runtime.Object) (error, bool) {
 	return nil, false
 }
 
-func (i IngressGenerateGatus) Apply(obj runtime.Object) error {
+func (i IngressGenerateGatus) Apply(obj runtime.Object, policyOperation int) error {
 	err, result := ValidateByType(PolicyTypeIngress, obj)
 	if err != nil {
 		return err
 	}
 
 	if ingress, ok := result.(*networkv1.Ingress); ok {
-		generateGatusConfigMap(ingress)
+		if policyOperation == PolicyOperationDelete {
+
+		} else if policyOperation == PolicyOperationUpsert {
+			generateGatusConfigMap(ingress)
+		}
 	} else {
 		return fmt.Errorf("could not cast object to Ingress")
 	}

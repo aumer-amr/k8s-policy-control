@@ -18,12 +18,17 @@ const (
 	PolicyTypeIngress
 )
 
+const (
+	PolicyOperationUpsert = iota
+	PolicyOperationDelete
+)
+
 var policyRegistry []PolicyInterface
 
 type PolicyInterface interface {
 	Name() string
 	Validate(obj runtime.Object) (error, bool)
-	Apply(obj runtime.Object) error
+	Apply(obj runtime.Object, operation int) error
 	Type() int
 }
 
@@ -45,7 +50,7 @@ func PoliciesByType(policyType int) []PolicyInterface {
 	return policies
 }
 
-func ApplyPoliciesByType(policyType int, obj runtime.Object) error {
+func ApplyPoliciesByType(policyType int, obj runtime.Object, operation int) error {
 	policies := PoliciesByType(policyType)
 	for _, p := range policies {
 		policyLog.Info("applying policy", "policy", p.Name())
@@ -57,7 +62,7 @@ func ApplyPoliciesByType(policyType int, obj runtime.Object) error {
 			return nil
 		}
 
-		err = p.Apply(obj)
+		err = p.Apply(obj, operation)
 		if err != nil {
 			policyLog.Error(err, "error running policy", p.Name())
 			return err

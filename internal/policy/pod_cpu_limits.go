@@ -43,7 +43,7 @@ func (p PodCPULimits) Validate(obj runtime.Object) (error, bool) {
 	return nil, true
 }
 
-func (p PodCPULimits) Apply(obj runtime.Object) error {
+func (p PodCPULimits) Apply(obj runtime.Object, policyOperation int) error {
 	err, result := ValidateByType(PolicyTypePod, obj)
 	if err != nil {
 		return err
