@@ -1,13 +1,18 @@
 package policy
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/aumer-amr/k8s-policy-control/internal/util"
-	networkv1 "k8s.io/api/networking/v1"
+	"gopkg.in/yaml.v3"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
@@ -21,16 +26,32 @@ var (
 	ingressGenerateGatusLog = ctrl.Log.WithName("ingress_generate_gatus")
 )
 
-type IngressGenerateGatusData struct {
-	GATUSNAME       string
-	GATUSGROUP      string
-	GATUSHOST       string
-	GATUSPATH       string
-	GATUSCONDITIONS string
-	GATUSDNS        string
+type GatusConfigMap struct {
+	Endpoints []GatusEndpoint `yaml:"endpoints"`
 }
 
-type IngressGenerateGatus struct{}
+type GatusEndpoint struct {
+	Name       string          `yaml:"name"`
+	Group      string          `yaml:"group"`
+	Url        string          `yaml:"url"`
+	Interval   string          `yaml:"interval"`
+	Ui         GatusUi         `yaml:"ui"`
+	Conditions []string        `yaml:"conditions,omitempty"`
+	Dns        *GatusDnsClient `yaml:"client,omitempty"`
+}
+
+type GatusUi struct {
+	HideHostname bool `yaml:"hideHostname"`
+	HideUrl      bool `yaml:"hideUrl"`
+}
+
+type GatusDnsClient struct {
+	DnsResolver string `yaml:"dnsResolver"`
+}
+
+type IngressGenerateGatus struct {
+	Manager ctrl.Manager
+}
 
 func (i IngressGenerateGatus) Name() string {
 	return "Ingress Generate Gatus"
@@ -40,16 +61,14 @@ func (i IngressGenerateGatus) Type() int {
 	return PolicyTypeIngress
 }
 
-func (i IngressGenerateGatus) Validate(obj runtime.Object) (error, bool) {
-	err, result := ValidateByType(PolicyTypeIngress, obj)
-	if err != nil {
-		return err, false
-	}
+func (i IngressGenerateGatus) Validate(obj runtime.Object, mgr ctrl.Manager) (error, bool) {
+	i.Manager = mgr
 
-	if ingress, ok := result.(*networkv1.Ingress); ok {
+	if ingress, ok := obj.(*networkingv1.Ingress); ok {
 		if val, ok := ingress.Annotations[gatusGenerateAnnotation]; ok {
 			if val == "false" {
-				podCpuLog.Info("Skipping Ingress because annotation is explicitly false", "ignress", getIngressName(ingress))
+				ingressGenerateGatusLog.Info("Skipping Ingress because annotation is explicitly false", "ingress", getIngressName(ingress))
+				i.Handle(ingress, true)
 				return nil, false
 			} else if val == "true" {
 				return nil, true
@@ -62,102 +81,133 @@ func (i IngressGenerateGatus) Validate(obj runtime.Object) (error, bool) {
 	return nil, false
 }
 
-func (i IngressGenerateGatus) Apply(obj runtime.Object, policyOperation int) error {
-	err, result := ValidateByType(PolicyTypeIngress, obj)
+func (i IngressGenerateGatus) Apply(obj runtime.Object, mgr ctrl.Manager) error {
+	i.Manager = mgr
+
+	ingress, ok := obj.(*networkingv1.Ingress)
+	if !ok {
+		ingressGenerateGatusLog.Error(fmt.Errorf("could not cast object to Ingress"), "error casting object to Ingress")
+		return nil
+	}
+
+	err := i.Handle(ingress, false)
+	return err
+}
+
+func (i IngressGenerateGatus) Handle(ingress *networkingv1.Ingress, fromValidate bool) error {
+	configMapList := corev1.ConfigMapList{}
+	err := i.Manager.GetClient().List(context.Background(), &configMapList, client.MatchingLabels{
+		"app.kubernetes.io/managed-by":       "policy-control.aumer.io",
+		"policy-control.aumer.io/parent-uid": string(ingress.ObjectMeta.UID),
+	})
 	if err != nil {
 		return err
 	}
 
-	if ingress, ok := result.(*networkv1.Ingress); ok {
-		if policyOperation == PolicyOperationDelete {
-
-		} else if policyOperation == PolicyOperationUpsert {
-			generateGatusConfigMap(ingress)
+	// Delete configmap on ingress deletion
+	if ingress.ObjectMeta.DeletionTimestamp.IsZero() == false || fromValidate == true {
+		if len(configMapList.Items) == 1 {
+			configMap := configMapList.Items[0]
+			i.Delete(ingress, configMap)
 		}
-	} else {
-		return fmt.Errorf("could not cast object to Ingress")
+		return nil
+	}
+
+	// Create configmap if it doesn't exist
+	if len(configMapList.Items) == 0 && fromValidate == false {
+		i.Create(ingress)
+		return nil
+	}
+
+	// Update configmap if it exists
+	if len(configMapList.Items) == 1 && fromValidate == false {
+		configMap := configMapList.Items[0]
+		i.Update(ingress, configMap)
+		return nil
 	}
 
 	return nil
 }
 
-func generateGatusConfigMap(ingress *networkv1.Ingress) string {
-	ingressGenerateGatusLog.Info("Generating Gatus ConfigMap", "ingress", getIngressName(ingress))
+func (i IngressGenerateGatus) Update(ingress *networkingv1.Ingress, configMap corev1.ConfigMap) {
 
-	// TODO: Make this into a template file
-	configMapDataTemplate := `
----
-endpoints:
-  - name: {{ .GATUSNAME }}
-    group: {{ .GATUSGROUP }}
-    url: https://{{ .GATUSHOST }}{{ .GATUSPATH }}
-    interval: 1m
-    ui:
-      hide-hostname: true
-      hide-url: true
-    {{ .GATUSCONDITIONS }}
-    {{ .GATUSDNS }}`
+	configMap.Data["config.yaml"] = generateGatusConfigMapData(ingress)
+	i.Manager.GetClient().Update(context.Background(), &configMap)
+}
 
-	configMapData, err := util.RenderTemplate(configMapDataTemplate, IngressGenerateGatusData{
-		GATUSNAME:       util.GetAnnotationStringValue(gatusNameAnnotation, ingress.Annotations, getIngressName(ingress)),
-		GATUSGROUP:      util.GetAnnotationStringValue(gatusGroupAnnotation, ingress.Annotations, "default"),
-		GATUSHOST:       util.GetAnnotationStringValue(gatusHostAnnotation, ingress.Annotations, ingress.Spec.Rules[0].Host),
-		GATUSPATH:       util.GetAnnotationStringValue(gatusPathAnnotation, ingress.Annotations, ingress.Spec.Rules[0].HTTP.Paths[0].Path),
-		GATUSCONDITIONS: mutateGatusConditions(util.GetAnnotationStringValue(gatusConditions, ingress.Annotations, "")),
-		GATUSDNS:        mutateGatusDns(util.GetAnnotationBoolValue(gatusDns, ingress.Annotations, false)),
-	})
+func (i IngressGenerateGatus) Delete(ingress *networkingv1.Ingress, configMap corev1.ConfigMap) {
+	i.Manager.GetClient().Delete(context.Background(), &configMap)
+}
 
+func (i IngressGenerateGatus) Create(ingress *networkingv1.Ingress) {
+	ingressGenerateGatusLog.Info("Creating Gatus ConfigMap", "ingress", getIngressName(ingress))
+
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: generateGatusConfigMapMetadata(ingress),
+		Data: map[string]string{
+			"config.yaml": generateGatusConfigMapData(ingress),
+		},
+	}
+
+	i.Manager.GetClient().Create(context.Background(), configMap)
+}
+
+func generateGatusConfigMapMetadata(ingress *networkingv1.Ingress) metav1.ObjectMeta {
+	return metav1.ObjectMeta{
+		Name:      getIngressName(ingress) + "-gatus-generated",
+		Namespace: ingress.GetNamespace(),
+		Labels: map[string]string{
+			"app.kubernetes.io/managed-by":       "policy-control.aumer.io",
+			"gatus.io/enabled":                   "enabled",
+			"policy-control.aumer.io/parent-uid": string(ingress.ObjectMeta.UID),
+		},
+	}
+}
+
+func generateGatusConfigMapData(ingress *networkingv1.Ingress) string {
+	url := util.GetAnnotationStringValue(gatusHostAnnotation, ingress.Annotations, ingress.Spec.Rules[0].Host) + util.GetAnnotationStringValue(gatusPathAnnotation, ingress.Annotations, ingress.Spec.Rules[0].HTTP.Paths[0].Path)
+
+	configMapData := &GatusConfigMap{
+		Endpoints: []GatusEndpoint{
+			{
+				Name:       util.GetAnnotationStringValue(gatusNameAnnotation, ingress.Annotations, getIngressName(ingress)),
+				Group:      util.GetAnnotationStringValue(gatusGroupAnnotation, ingress.Annotations, "default"),
+				Url:        url,
+				Interval:   "1m",
+				Ui:         GatusUi{HideHostname: true, HideUrl: true},
+				Conditions: mutateGatusConditions(util.GetAnnotationStringValue(gatusConditions, ingress.Annotations, "")),
+				Dns:        mutateGatusDns(util.GetAnnotationBoolValue(gatusDns, ingress.Annotations, false)),
+			},
+		},
+	}
+
+	outputYaml, err := yaml.Marshal(configMapData)
 	if err != nil {
-		ingressGenerateGatusLog.Error(err, "Failed to render template", "ingress", getIngressName(ingress))
-		return ""
+		ingressGenerateGatusLog.Error(err, "error marshalling config map data")
 	}
 
-	// configMap := &corev1.ConfigMap{
-	// 	ObjectMeta: metav1.ObjectMeta{
-	// 		Name:      getIngressName(ingress) + "-gatus-generated",
-	// 		Namespace: ingress.GetNamespace(),
-	// 		Labels: map[string]string{
-	// 			"policy-control.aumer.io/managed": "true",
-	// 			"gatus.io/enabled":                "enabled",
-	// 		},
-	// 	},
-	// 	Data: map[string]string{
-	// 		"config.yaml": configMapData,
-	// 	},
-	// }
-
-	return configMapData
-
-	//client.Client().Create(context.Background(), configMap)
+	return string(outputYaml)
 }
 
-func mutateGatusDns(annotationValue bool) string {
+func mutateGatusDns(annotationValue bool) *GatusDnsClient {
 	if annotationValue == false {
-		return ""
+		return nil
 	}
 
-	// TODO: Make this into a template file
-	mutatedDns := `client:
-      dns-resolver: tcp://1.1.1.1:53`
-
-	return mutatedDns
+	return &GatusDnsClient{
+		DnsResolver: "tcp://1.1.1.1:53",
+	}
 }
 
-func mutateGatusConditions(annotationValue string) string {
+func mutateGatusConditions(annotationValue string) []string {
 	if annotationValue == "" {
-		annotationValue = "[STATUS] == 200"
+		return []string{"[STATUS] == 200"}
 	}
 
-	conditions := strings.Split(annotationValue, ",")
-	mutatedConditions := "conditions: "
-	for _, condition := range conditions {
-		mutatedConditions += fmt.Sprintf("\n      - \"%s\",", condition)
-	}
-
-	return mutatedConditions
+	return strings.Split(annotationValue, ",")
 }
 
-func getIngressName(ingress *networkv1.Ingress) string {
+func getIngressName(ingress *networkingv1.Ingress) string {
 	ingressName := ingress.GetName()
 	if ingressName != "" {
 		return ingressName

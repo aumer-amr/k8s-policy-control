@@ -24,7 +24,6 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
-	"github.com/aumer-amr/k8s-policy-control/internal/client"
 	controller "github.com/aumer-amr/k8s-policy-control/internal/controller"
 	"github.com/aumer-amr/k8s-policy-control/internal/policy"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -81,14 +80,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = client.New(mgr.GetConfig())
-	if err != nil {
-		setupLog.Error(err, "unable to create client")
-		os.Exit(1)
-	}
-
 	setupProbeEndpoints(mgr)
-	go setupControllers(mgr)
+	setupControllers(mgr)
 
 	policy.RegisterPolicies()
 

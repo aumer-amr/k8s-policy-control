@@ -3,6 +3,9 @@ kind: Ingress
 metadata:
   name: cyberchef
   namespace: default
+  annotations:
+    policy-control.aumer.io/gatus-generate: "false"
+    policy-control.aumer.io/gatus-dns: "true"
   labels:
     app: cyberchef
     chart: cyberchef-0.1.0

@@ -1,10 +1,6 @@
 package policy
 
 import (
-	"fmt"
-
-	corev1 "k8s.io/api/core/v1"
-	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -14,21 +10,17 @@ var (
 )
 
 const (
-	PolicyTypePod = iota
+	PolicyTypeUnknown = iota
+	PolicyTypePod
 	PolicyTypeIngress
-)
-
-const (
-	PolicyOperationUpsert = iota
-	PolicyOperationDelete
 )
 
 var policyRegistry []PolicyInterface
 
 type PolicyInterface interface {
 	Name() string
-	Validate(obj runtime.Object) (error, bool)
-	Apply(obj runtime.Object, operation int) error
+	Validate(obj runtime.Object, mgr ctrl.Manager) (error, bool)
+	Apply(obj runtime.Object, mgr ctrl.Manager) error
 	Type() int
 }
 
@@ -50,45 +42,27 @@ func PoliciesByType(policyType int) []PolicyInterface {
 	return policies
 }
 
-func ApplyPoliciesByType(policyType int, obj runtime.Object, operation int) error {
+func ApplyPoliciesByType(policyType int, obj runtime.Object, mgr ctrl.Manager) error {
 	policies := PoliciesByType(policyType)
 	for _, p := range policies {
 		policyLog.Info("applying policy", "policy", p.Name())
-		err, result := p.Validate(obj)
+		err, result := p.Validate(obj, mgr)
 
 		if err != nil {
+			policyLog.Error(err, "error validating policy", "policy", p.Name())
 			return err
 		} else if !result {
+			policyLog.Info("policy not applicable", "policy", p.Name())
 			return nil
 		}
 
-		err = p.Apply(obj, operation)
+		err = p.Apply(obj, mgr)
 		if err != nil {
-			policyLog.Error(err, "error running policy", p.Name())
+			policyLog.Error(err, "error running policy", "policy", p.Name())
 			return err
 		}
 	}
 	return nil
-}
-
-func ValidateByType(policyType int, obj runtime.Object) (error, interface{}) {
-	if policyType == PolicyTypePod {
-		pod, ok := obj.(*corev1.Pod)
-		if !ok {
-			policyLog.Error(nil, "expected a Pod but got a %T", obj)
-			return fmt.Errorf("expected a Pod but got a %T", obj), nil
-		}
-		return nil, pod
-	} else if policyType == PolicyTypeIngress {
-		ingress, ok := obj.(*networkv1.Ingress)
-		if !ok {
-			policyLog.Error(nil, "expected an Ingress but got a %T", obj)
-			return fmt.Errorf("expected an Ingress but got a %T", obj), nil
-		}
-		return nil, ingress
-	}
-
-	return nil, nil
 }
 
 func RegisterPolicies() {

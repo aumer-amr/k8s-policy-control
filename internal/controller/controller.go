@@ -8,7 +8,7 @@ import (
 	"github.com/aumer-amr/k8s-policy-control/internal/policy"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	networkv1 "k8s.io/api/networking/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	client "sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,13 +29,15 @@ var (
 type ReconcilerHandler struct {
 	Client     client.Client
 	PolicyType int
+	Manager    ctrl.Manager
 	Controller controller.Controller
 }
 
 func New(mgr ctrl.Manager, policyType int) *ReconcilerHandler {
 	controller := &ReconcilerHandler{
-		Client:     mgr.GetClient(),
 		PolicyType: policyType,
+		Manager:    mgr,
+		Client:     mgr.GetClient(),
 	}
 	controller.SetupWithManager(mgr)
 	return controller
@@ -46,6 +48,7 @@ func (r *ReconcilerHandler) SetupWithManager(mgr ctrl.Manager) {
 		Reconciler: &ReconcilerHandler{
 			Client:     mgr.GetClient(),
 			PolicyType: r.PolicyType,
+			Manager:    mgr,
 		},
 	})
 	if err != nil {
@@ -53,12 +56,16 @@ func (r *ReconcilerHandler) SetupWithManager(mgr ctrl.Manager) {
 		os.Exit(1)
 	}
 
+	controllerLog.Info("Setting up controller", "PolicyType", r.PolicyType)
+
 	r.Controller = c
 
 	if r.PolicyType == policy.PolicyTypeIngress {
-		r.WatchResource(mgr, &networkv1.Ingress{}, controllerLog)
+		r.WatchResource(mgr, &networkingv1.Ingress{}, controllerLog)
 	} else if r.PolicyType == policy.PolicyTypePod {
 		r.WatchResource(mgr, &corev1.Pod{}, controllerLog)
+	} else if r.PolicyType == policy.PolicyTypeUnknown {
+		controllerLog.Info("PolicyType is unknown, not watching any resources")
 	}
 }
 
@@ -90,12 +97,11 @@ func (r *ReconcilerHandler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 func (r *ReconcilerHandler) checkCache(ctx context.Context, namespacedName string, typed client.Object) (error, bool) {
 	err := r.Client.Get(ctx, client.ObjectKey{Name: namespacedName}, typed)
-	if errors.IsNotFound(err) {
-		controllerLog.Info("Cache miss", "namespacedName", namespacedName)
-		return err, true
-	}
-
 	if err != nil {
+		if errors.IsNotFound(err) {
+			controllerLog.Info("Cache miss", "namespacedName", namespacedName)
+			return err, true
+		}
 		controllerLog.Error(err, "Failed to get object from cache", "namespacedName", namespacedName)
 		return err, false
 	}
