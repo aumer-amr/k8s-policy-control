@@ -10,10 +10,6 @@
       "request": "launch",
       "mode": "auto",
       "program": "${workspaceFolder}/internal",
-      "args": [
-        "--tls-cert-dir",
-        "${workspaceFolder}/certs",
-      ]
     },
     {
       "name": "Launch Tests",

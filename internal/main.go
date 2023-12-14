@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -51,8 +50,6 @@ func init() {
 func main() {
 	var metricsAddr string
 	var probeAddr string
-	var certDir string
-	flag.StringVar(&certDir, "tls-cert-dir", "/tls", "Folder where TLS key and cert are located.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	opts := zap.Options{
@@ -70,10 +67,6 @@ func main() {
 		Metrics: server.Options{
 			BindAddress: metricsAddr,
 		},
-		WebhookServer: webhook.NewServer(webhook.Options{
-			Port:    9443,
-			CertDir: certDir,
-		}),
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

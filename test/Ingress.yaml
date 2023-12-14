@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cyberchef
+  namespace: default
+  annotations:
+    policy-control.aumer.io/gatus-generate: "false"
+    policy-control.aumer.io/gatus-dns: "true"
+  labels:
+    app: cyberchef
+    chart: cyberchef-0.1.0
+    heritage: Helm
+    release: cyberchef
+spec:
+  ingressClassName: external
+  rules:
+  - host: cyberchef.domain.tld
+    http:
+      paths:
+      - backend:
+          service:
+            name: cyberchef
+            port:
+              number: 8000
+        path: /
+        pathType: Prefix
+  tls:
+  - hosts:
+    - cyberchef.domain.tld
+status:
+  loadBalancer:
+    ingress:
+    - ip: 10.1.1.1
