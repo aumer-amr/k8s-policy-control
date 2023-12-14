@@ -42,8 +42,8 @@ type GatusEndpoint struct {
 }
 
 type GatusUi struct {
-	HideHostname bool `yaml:"hideHostname"`
-	HideUrl      bool `yaml:"hideUrl"`
+	HideHostname bool `yaml:"hide-hostname"`
+	HideUrl      bool `yaml:"hide-url"`
 }
 
 type GatusDnsClient struct {
