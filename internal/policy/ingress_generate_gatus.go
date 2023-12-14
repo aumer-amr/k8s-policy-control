@@ -47,7 +47,7 @@ type GatusUi struct {
 }
 
 type GatusDnsClient struct {
-	DnsResolver string `yaml:"dnsResolver"`
+	DnsResolver string `yaml:"dns-resolver"`
 }
 
 type IngressGenerateGatus struct {
