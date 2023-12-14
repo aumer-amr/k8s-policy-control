@@ -21,6 +21,7 @@ var (
 	gatusGroupAnnotation    = "policy-control.aumer.io/gatus-group"
 	gatusHostAnnotation     = "policy-control.aumer.io/gatus-host"
 	gatusPathAnnotation     = "policy-control.aumer.io/gatus-path"
+	gatusProtocolAnnotation = "policy-control.aumer.io/gatus-protocol"
 	gatusConditions         = "policy-control.aumer.io/gatus-conditions"
 	gatusDns                = "policy-control.aumer.io/gatus-dns"
 	ingressGenerateGatusLog = ctrl.Log.WithName("ingress_generate_gatus")
@@ -165,14 +166,13 @@ func generateGatusConfigMapMetadata(ingress *networkingv1.Ingress) metav1.Object
 }
 
 func generateGatusConfigMapData(ingress *networkingv1.Ingress) string {
-	url := util.GetAnnotationStringValue(gatusHostAnnotation, ingress.Annotations, ingress.Spec.Rules[0].Host) + util.GetAnnotationStringValue(gatusPathAnnotation, ingress.Annotations, ingress.Spec.Rules[0].HTTP.Paths[0].Path)
 
 	configMapData := &GatusConfigMap{
 		Endpoints: []GatusEndpoint{
 			{
 				Name:       util.GetAnnotationStringValue(gatusNameAnnotation, ingress.Annotations, getIngressName(ingress)),
 				Group:      util.GetAnnotationStringValue(gatusGroupAnnotation, ingress.Annotations, "default"),
-				Url:        url,
+				Url:        mutateGatusUrl(ingress),
 				Interval:   "1m",
 				Ui:         GatusUi{HideHostname: true, HideUrl: true},
 				Conditions: mutateGatusConditions(util.GetAnnotationStringValue(gatusConditions, ingress.Annotations, "")),
@@ -205,6 +205,14 @@ func mutateGatusConditions(annotationValue string) []string {
 	}
 
 	return strings.Split(annotationValue, ",")
+}
+
+func mutateGatusUrl(ingress *networkingv1.Ingress) string {
+	protocol := util.GetAnnotationStringValue(gatusProtocolAnnotation, ingress.Annotations, "https")
+	host := util.GetAnnotationStringValue(gatusHostAnnotation, ingress.Annotations, ingress.Spec.Rules[0].Host)
+	path := util.GetAnnotationStringValue(gatusPathAnnotation, ingress.Annotations, ingress.Spec.Rules[0].HTTP.Paths[0].Path)
+
+	return protocol + "://" + host + path
 }
 
 func getIngressName(ingress *networkingv1.Ingress) string {
